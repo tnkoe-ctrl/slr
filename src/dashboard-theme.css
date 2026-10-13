@@ -1,0 +1,253 @@
+/* =========================================================
+   SARAO SLR TRACKER - FINAL DARK DASHBOARD THEME
+   ========================================================= */
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: #0b1220 !important;
+  color: #e5e7eb !important;
+}
+
+#root {
+  background: #0b1220 !important;
+  color: #e5e7eb !important;
+}
+
+/* Main dashboard containers */
+section,
+[data-dashboard-report="true"] {
+  color: #e5e7eb;
+}
+
+/* White/light panels */
+[data-dashboard-report="true"] section {
+  background-color: #111827 !important;
+  border-color: #334155 !important;
+  color: #e5e7eb !important;
+}
+
+/* Cards and common dashboard blocks */
+[data-dashboard-report="true"] div {
+  color: inherit;
+}
+
+/* Headings */
+[data-dashboard-report="true"] h1,
+[data-dashboard-report="true"] h2,
+[data-dashboard-report="true"] h3,
+[data-dashboard-report="true"] h4 {
+  color: #f8fafc !important;
+}
+
+/* Secondary text */
+[data-dashboard-report="true"] p,
+[data-dashboard-report="true"] small,
+[data-dashboard-report="true"] label {
+  color: #cbd5e1 !important;
+}
+
+/* Tables */
+[data-dashboard-report="true"] table {
+  background: #111827 !important;
+  color: #e5e7eb !important;
+}
+
+[data-dashboard-report="true"] thead {
+  background: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+[data-dashboard-report="true"] tbody tr {
+  background: #111827 !important;
+  color: #e5e7eb !important;
+  border-color: #334155 !important;
+}
+
+[data-dashboard-report="true"] tbody tr:hover {
+  background: #1e293b !important;
+}
+
+[data-dashboard-report="true"] th,
+[data-dashboard-report="true"] td {
+  color: #e5e7eb !important;
+  border-color: #334155 !important;
+}
+
+/* Inputs and selectors */
+[data-dashboard-report="true"] input,
+[data-dashboard-report="true"] select,
+[data-dashboard-report="true"] textarea {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+[data-dashboard-report="true"] input::placeholder,
+[data-dashboard-report="true"] textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Buttons */
+[data-dashboard-report="true"] button {
+  color: #f8fafc;
+}
+
+/* Links */
+[data-dashboard-report="true"] a {
+  color: #60a5fa !important;
+}
+
+/* SLR Files panel */
+[data-dashboard-report="true"] section h2 {
+  color: #f8fafc !important;
+}
+
+/* Keep status badges readable */
+[data-dashboard-report="true"] [style*="background"] {
+  /* Status colours remain controlled by the application. */
+}
+
+/* Scrollbars */
+[data-dashboard-report="true"] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-dashboard-report="true"] ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+[data-dashboard-report="true"] ::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 8px;
+}
+
+[data-dashboard-report="true"] ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* =========================================================
+   SLR FILES - ACTION BUTTON VISIBILITY
+   Keep all existing actions unchanged.
+   Only improve contrast/readability on dark dashboard.
+   ========================================================= */
+
+[data-dashboard-report="true"] button {
+  color: #f8fafc !important;
+}
+
+/* SLR Files Action column */
+[data-dashboard-report="true"] td:last-child,
+[data-dashboard-report="true"] th:last-child {
+  color: #f8fafc !important;
+}
+
+/* Download/action buttons inside SLR Files */
+[data-dashboard-report="true"] td:last-child button {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border: 1px solid #60a5fa !important;
+  border-radius: 7px !important;
+  padding: 7px 13px !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  text-shadow: none !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35) !important;
+}
+
+/* Hover */
+[data-dashboard-report="true"] td:last-child button:hover {
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+/* Disabled/loading state */
+[data-dashboard-report="true"] td:last-child button:disabled {
+  background: #475569 !important;
+  color: #e2e8f0 !important;
+  border-color: #64748b !important;
+  opacity: 1 !important;
+}
+
+/* Make action text readable even if inherited styles exist */
+[data-dashboard-report="true"] td:last-child button *,
+[data-dashboard-report="true"] td:last-child button span {
+  color: #ffffff !important;
+}
+
+
+/* =========================================================
+   SLR FILES - ACTION BUTTON VISIBILITY
+   ========================================================= */
+
+[data-dashboard-report="true"] td:last-child,
+[data-dashboard-report="true"] th:last-child {
+  color: #f8fafc !important;
+}
+
+[data-dashboard-report="true"] td:last-child button {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border: 1px solid #60a5fa !important;
+  border-radius: 7px !important;
+  padding: 7px 13px !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  text-shadow: none !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35) !important;
+}
+
+[data-dashboard-report="true"] td:last-child button:hover {
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+[data-dashboard-report="true"] td:last-child button:disabled {
+  background: #475569 !important;
+  color: #e2e8f0 !important;
+  border-color: #64748b !important;
+  opacity: 1 !important;
+}
+
+[data-dashboard-report="true"] td:last-child button *,
+[data-dashboard-report="true"] td:last-child button span {
+  color: #ffffff !important;
+}
+
+
+/* Strong button visibility fix */
+button,
+button *,
+[role="button"],
+[role="button"] * {
+  color: #111827 !important;
+}
+
+button,
+[role="button"] {
+  background: #e5e7eb !important;
+  border: 2px solid #374151 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15) !important;
+}
+
+button:hover:not(:disabled),
+[role="button"]:hover {
+  background: #d1d5db !important;
+}
+
+button:disabled {
+  color: #374151 !important;
+  background: #e5e7eb !important;
+  opacity: 0.8 !important;
+}

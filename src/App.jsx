@@ -1,7 +1,553 @@
-import { useEffect, useState } from 'react'
+import './dashboard-theme.css'
+import SlrFilesPanel from './components/SlrFilesPanel'
+
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
+function OperatorPerformanceGraph({ shiftName, performanceLogs }) {
+  const logs = performanceLogs
+    .filter((log) => log.shift === shiftName)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  const operators = [
+    ...new Set(
+      logs.map(
+        (log) =>
+          log.profiles?.full_name || 'Unknown Operator'
+      )
+    ),
+  ]
+
+  const dates = [
+    ...new Set(logs.map((log) => log.date)),
+  ].sort()
+
+  const width = 900
+  const height = 320
+  const paddingLeft = 60
+  const paddingRight = 30
+  const paddingTop = 30
+  const paddingBottom = 55
+
+  const chartWidth =
+    width - paddingLeft - paddingRight
+
+  const chartHeight =
+    height - paddingTop - paddingBottom
+
+  const maxValue = Math.max(
+    11,
+    ...logs.map((log) =>
+      Number(log.satellites_tracked || 0)
+    )
+  )
+
+  const getX = (index) => {
+    if (dates.length <= 1) {
+      return paddingLeft + chartWidth / 2
+    }
+
+    return (
+      paddingLeft +
+      (index / (dates.length - 1)) * chartWidth
+    )
+  }
+
+  const getY = (value) => {
+    return (
+      paddingTop +
+      chartHeight -
+      (value / maxValue) * chartHeight
+    )
+  }
+
+  const operatorColors = [
+    '#2563eb',
+    '#16a34a',
+    '#dc2626',
+    '#9333ea',
+    '#f97316',
+    '#0891b2',
+  ]
+
+  return (
+    <div
+      style={{
+        marginTop: '20px',
+        padding: '15px',
+        border: '1px solid #d1d5db',
+        borderRadius: '10px',
+        background: '#ffffff',
+      }}
+    >
+      <h4
+        style={{
+          marginTop: 0,
+          marginBottom: '10px',
+        }}
+      >
+        {shiftName.toUpperCase()} SHIFT — OPERATOR PERFORMANCE
+      </h4>
+
+      {dates.length === 0 ? (
+        <div style={{ padding: '20px', color: '#6b7280' }}>
+          No performance data for this shift.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            width="100%"
+            style={{
+              minWidth: '700px',
+              display: 'block',
+            }}
+          >
+            {/* Grid lines */}
+            {[0, 5, 10, 11].map((value) => (
+              <g key={value}>
+                <line
+                  x1={paddingLeft}
+                  y1={getY(value)}
+                  x2={width - paddingRight}
+                  y2={getY(value)}
+                  stroke="#e5e7eb"
+                  strokeWidth="1"
+                />
+
+                <text
+                  x={paddingLeft - 10}
+                  y={getY(value) + 4}
+                  textAnchor="end"
+                  fontSize="12"
+                  fill="#6b7280"
+                >
+                  {value}
+                </text>
+              </g>
+            ))}
+
+            {/* Target line */}
+            <line
+              x1={paddingLeft}
+              y1={getY(11)}
+              x2={width - paddingRight}
+              y2={getY(11)}
+              stroke="#dc2626"
+              strokeWidth="2"
+              strokeDasharray="6 5"
+            />
+
+            <text
+              x={width - paddingRight}
+              y={getY(11) - 8}
+              textAnchor="end"
+              fontSize="12"
+              fill="#dc2626"
+              fontWeight="bold"
+            >
+              Target 11
+            </text>
+
+            {/* Operator lines */}
+            {operators.map((operator, operatorIndex) => {
+              const points = dates.map((date, dateIndex) => {
+                const log = logs.find(
+                  (item) =>
+                    item.date === date &&
+                    (item.profiles?.full_name ||
+                      'Unknown Operator') === operator
+                )
+
+                const value = Number(
+                  log?.satellites_tracked || 0
+                )
+
+                return `${getX(dateIndex)},${getY(value)}`
+              })
+
+              return (
+                <g key={operator}>
+                  <polyline
+                    points={points.join(' ')}
+                    fill="none"
+                    stroke={
+                      operatorColors[
+                        operatorIndex %
+                          operatorColors.length
+                      ]
+                    }
+                    strokeWidth="3"
+                  />
+
+                  {dates.map((date, dateIndex) => {
+                    const log = logs.find(
+                      (item) =>
+                        item.date === date &&
+                        (item.profiles?.full_name ||
+                          'Unknown Operator') === operator
+                    )
+
+                    const value = Number(
+                      log?.satellites_tracked || 0
+                    )
+
+                    return (
+                      <circle
+                        key={`${operator}-${date}`}
+                        cx={getX(dateIndex)}
+                        cy={getY(value)}
+                        r="4"
+                        fill={
+                          operatorColors[
+                            operatorIndex %
+                              operatorColors.length
+                          ]
+                        }
+                      />
+                    )
+                  })}
+                </g>
+              )
+            })}
+
+            {/* Dates */}
+            {dates.map((date, index) => (
+              <text
+                key={date}
+                x={getX(index)}
+                y={height - 20}
+                textAnchor="middle"
+                fontSize="11"
+                fill="#6b7280"
+              >
+                {date}
+              </text>
+            ))}
+
+            {/* Axis labels */}
+            <text
+              x={20}
+              y={height / 2}
+              textAnchor="middle"
+              fontSize="12"
+              fill="#374151"
+              transform={`rotate(-90 20 ${height / 2})`}
+            >
+              Satellites Tracked
+            </text>
+
+            <text
+              x={width / 2}
+              y={height - 2}
+              textAnchor="middle"
+              fontSize="12"
+              fill="#374151"
+            >
+              Date
+            </text>
+          </svg>
+
+          {/* Legend */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '15px',
+              marginTop: '8px',
+              justifyContent: 'center',
+            }}
+          >
+            {operators.map((operator, index) => (
+              <div
+                key={operator}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '13px',
+                }}
+              >
+                <span
+                  style={{
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    background:
+                      operatorColors[
+                        index %
+                          operatorColors.length
+                      ],
+                    display: 'inline-block',
+                  }}
+                />
+
+                {operator}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+function ActivationCountdown() {
+  const [activation, setActivation] = useState(null)
+  const [now, setNow] = useState(Date.now())
+  const [loadError, setLoadError] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadActivation() {
+      const { data, error } = await supabase
+        .from('sftp_activation_status')
+        .select('activated_at, expires_at, updated_at')
+        .eq('id', true)
+        .maybeSingle()
+
+      if (!mounted) return
+
+      if (error) {
+        console.error('Could not load shared activation status:', error.message)
+        setLoadError(true)
+        return
+      }
+
+      setActivation(data)
+      setLoadError(false)
+    }
+
+    loadActivation()
+
+    const refreshTimer = setInterval(loadActivation, 30000)
+    const clockTimer = setInterval(() => setNow(Date.now()), 1000)
+
+    return () => {
+      mounted = false
+      clearInterval(refreshTimer)
+      clearInterval(clockTimer)
+    }
+  }, [])
+
+  const expiry = activation?.expires_at
+    ? new Date(activation.expires_at).getTime()
+    : 0
+
+  const remaining = Math.max(0, Math.floor((expiry - now) / 1000))
+  const days = Math.floor(remaining / 86400)
+  const hours = Math.floor((remaining % 86400) / 3600)
+  const minutes = Math.floor((remaining % 3600) / 60)
+  const seconds = remaining % 60
+
+  const countdown = [
+    days > 0 ? `${days}d` : null,
+    `${String(hours).padStart(2, '0')}h`,
+    `${String(minutes).padStart(2, '0')}m`,
+    `${String(seconds).padStart(2, '0')}s`,
+  ].filter(Boolean).join(' ')
+
+  const active = Boolean(expiry && remaining > 0)
+
+  return (
+    <section
+      aria-live="polite"
+      style={{
+        margin: '16px 0',
+        padding: '14px 18px',
+        border: `1px solid ${active ? '#86efac' : '#d1d5db'}`,
+        borderRadius: '10px',
+        background: active ? '#f0fdf4' : '#f8fafc',
+        color: '#1e293b',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+        flexWrap: 'wrap',
+      }}
+    >
+      <div>
+        <strong>SFTP Activation</strong>
+        <div style={{ fontSize: '13px', marginTop: '4px' }}>
+          {loadError
+            ? 'Unable to load shared status. Retrying automatically.'
+            : !activation
+              ? 'Waiting for shared activation status...'
+              : active
+                ? 'Activation time remaining'
+                : 'Activation expired — renewal required'}
+        </div>
+      </div>
+
+      <strong
+        style={{
+          fontSize: '20px',
+          fontVariantNumeric: 'tabular-nums',
+          color: active ? '#166534' : '#475569',
+        }}
+      >
+        {loadError
+          ? 'Unavailable'
+          : !activation
+            ? 'Loading...'
+            : active
+              ? countdown
+              : 'EXPIRED'}
+      </strong>
+    </section>
+  )
+}
 
 function App() {
+const dashboardRef = useRef(null)
+
+async function downloadDashboardPDF() {
+  try {
+    const dashboard = document.querySelector(
+      '[data-dashboard-report="true"]'
+    )
+
+    if (!dashboard) {
+      alert('Dashboard report area not found.')
+      return
+    }
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, 500)
+    )
+
+    const clone = dashboard.cloneNode(true)
+
+    const headings = clone.querySelectorAll('h3')
+
+    headings.forEach((heading) => {
+      if (
+        heading.textContent
+          .trim()
+          .includes('ALL SUBMITTED SHIFT WORK')
+      ) {
+        const section = heading.closest('section')
+
+        if (section) {
+          section.remove()
+        }
+      }
+    })
+
+    const wrapper = document.createElement('div')
+
+    wrapper.style.position = 'absolute'
+    wrapper.style.left = '-100000px'
+    wrapper.style.top = '0'
+    wrapper.style.width = `${dashboard.scrollWidth}px`
+    wrapper.style.background = '#ffffff'
+    wrapper.style.padding = '20px'
+    wrapper.style.boxSizing = 'border-box'
+
+    wrapper.appendChild(clone)
+    document.body.appendChild(wrapper)
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, 300)
+    )
+
+    const canvas = await html2canvas(wrapper, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      width: wrapper.scrollWidth,
+      height: wrapper.scrollHeight,
+      windowWidth: wrapper.scrollWidth,
+      windowHeight: wrapper.scrollHeight,
+    })
+
+    document.body.removeChild(wrapper)
+
+    const imageData = canvas.toDataURL(
+      'image/png',
+      1.0
+    )
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    })
+
+    const pageWidth =
+      pdf.internal.pageSize.getWidth()
+
+    const pageHeight =
+      pdf.internal.pageSize.getHeight()
+
+    const margin = 8
+
+    const usableWidth =
+      pageWidth - margin * 2
+
+    const imageHeight =
+      (canvas.height * usableWidth) /
+      canvas.width
+
+    let remainingHeight = imageHeight
+    let position = margin
+
+    pdf.addImage(
+      imageData,
+      'PNG',
+      margin,
+      position,
+      usableWidth,
+      imageHeight
+    )
+
+    remainingHeight -=
+      pageHeight - margin * 2
+
+    while (remainingHeight > 0) {
+      pdf.addPage()
+
+      position =
+        margin -
+        (imageHeight -
+          remainingHeight)
+
+      pdf.addImage(
+        imageData,
+        'PNG',
+        margin,
+        position,
+        usableWidth,
+        imageHeight
+      )
+
+      remainingHeight -=
+        pageHeight - margin * 2
+    }
+
+    const startDate =
+      performanceStartDate || 'start'
+
+    const endDate =
+      performanceEndDate || 'end'
+
+    pdf.save(
+      `SARAO_SLR_Dashboard_${startDate}_to_${endDate}.pdf`
+    )
+
+  } catch (error) {
+    console.error(
+      'Dashboard PDF generation failed:',
+      error
+    )
+
+    alert(
+      'PDF generation failed. Check the browser console.'
+    )
+  }
+}
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -23,7 +569,10 @@ function App() {
   const [satellites, setSatellites] = useState('')
   const [condition, setCondition] = useState('Good')
   const [weather, setWeather] = useState('Clear')
-  const [notes, setNotes] = useState('')
+  const [problemsFound, setProblemsFound] = useState('')
+  const [handoverNotes, setHandoverNotes] = useState('')
+const [handoverAcknowledged, setHandoverAcknowledged] = useState(false)
+  const [handoverHistory, setHandoverHistory] = useState([])
 
   const [submitMessage, setSubmitMessage] = useState('')
 
@@ -38,8 +587,10 @@ function App() {
     new Date().toISOString().split('T')[0]
   )
   const [dashboardLogs, setDashboardLogs] = useState([])
+  const [expandedShiftId, setExpandedShiftId] = useState(null)
 const [performanceLogs, setPerformanceLogs] = useState([])
   const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [monthlyReport, setMonthlyReport] = useState('')
 
   const [editingLog, setEditingLog] = useState(null)
   const [editMessage, setEditMessage] = useState('')
@@ -124,6 +675,7 @@ setSubmitMessage('')
     setUser(null)
     setProfile(null)
     setShowDashboard(false)
+    setHandoverAcknowledged(false)
 
     setEmail('')
     setPassword('')
@@ -155,7 +707,6 @@ setSubmitMessage('')
         satellites_tracked: Number(satellites),
         station_condition: condition,
         weather,
-        notes,
       })
 
     if (error) {
@@ -164,7 +715,29 @@ setSubmitMessage('')
       return
     }
 
-    setSubmitMessage('Shift submitted successfully.')
+    const { error: handoverError } = await supabase
+      .from('station_handovers')
+      .insert({
+        operator_id: user.id,
+        date,
+        shift,
+        station_status: condition,
+        problems_found: problemsFound,
+        handover_notes: handoverNotes,
+      })
+
+    if (handoverError) {
+      console.error(handoverError)
+      setSubmitMessage(handoverError.message)
+      return
+    }
+
+    await loadHandoverHistory()
+
+    setProblemsFound('')
+    setHandoverNotes('')
+
+    setSubmitMessage('Shift and handover submitted successfully.')
     const operatorName = profile?.full_name || 'Unknown Operator'
 
     const now = new Date()
@@ -191,56 +764,162 @@ setSubmitMessage('')
     setStartTime('')
     setEndTime('')
     setSatellites('')
-    setNotes('')
   }
 
-  async function loadDashboard() {
-    if (!profile || !user) return
+  async function acknowledgeHandover(handoverId) {
+    if (!user || !handoverId) return
 
-    if (profile.role !== 'admin') {
-      setDashboardLogs([])
-      return
-    }
-
-    setDashboardLoading(true)
-
-    const { data, error } = await supabase
-      .from('shift_logs')
-      .select(`
-        id,
-        date,
-        shift,
-        start_time,
-        end_time,
-        satellites_tracked,
-        station_condition,
-        weather,
-        notes,
-        created_at,
-        operator_id,
-        profiles(full_name)
-      `)
-      .eq('date', dashboardDate)
-      .order('start_time', { ascending: true })
+    const { error } = await supabase.rpc(
+      'acknowledge_station_handover',
+      {
+        handover_id: handoverId
+      }
+    )
 
     if (error) {
       console.error(error)
-      setDashboardLogs([])
-      setDashboardLoading(false)
       return
     }
-async function loadPerformance() {
-  if (!profile || !user || profile.role !== 'admin') return
+
+    setHandoverAcknowledged(true)
+    await loadHandoverHistory()
+  }
+
+  async function acknowledgeHandover(handoverId) {
+    if (!user || !handoverId) return
+
+    const { error } = await supabase.rpc(
+      'acknowledge_station_handover',
+      {
+        handover_id: handoverId
+      }
+    )
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    setHandoverAcknowledged(true)
+    await loadHandoverHistory()
+  }
+
+  async function loadHandoverHistory() {
+  if (!user) return
+
+  const { data, error } = await supabase
+    .from('station_handovers')
+    .select(`
+      id,
+      date,
+      shift,
+      station_status,
+      problems_found,
+      handover_notes,
+      created_at,
+      acknowledged_by,
+      acknowledged_at,
+      profiles(full_name)
+    `)
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  if (error) {
+    console.error(error)
+    setHandoverHistory([])
+    return
+  }
+
+  setHandoverHistory(data || [])
+}
+
+async function loadDashboard() {
+  if (!profile || !user || (profile.role || '').toLowerCase() !== 'admin') return
+
+  setDashboardLoading(true)
 
   const { data, error } = await supabase
     .from('shift_logs')
     .select(`
+      id,
       date,
       shift,
-      satellites_tracked
+      start_time,
+      end_time,
+      satellites_tracked,
+      station_condition,
+      weather,
+      created_at,
+      operator_id,
+      profiles(full_name)
     `)
     .gte('date', performanceStartDate)
     .lte('date', performanceEndDate)
+    .order('date', { ascending: true })
+    .order('start_time', { ascending: true })
+
+  if (error) {
+    console.error(error)
+    setDashboardLogs([])
+    setDashboardLoading(false)
+    return
+  }
+
+  const { data: handovers, error: handoverError } = await supabase
+    .from('station_handovers')
+    .select(`
+      id,
+      date,
+      shift,
+      operator_id,
+      problems_found,
+      handover_notes,
+      created_at
+    `)
+    .gte('date', performanceStartDate)
+    .lte('date', performanceEndDate)
+    .order('created_at', { ascending: false })
+
+  if (handoverError) {
+    console.error(handoverError)
+  }
+
+  const combinedLogs = (data || []).map((log) => {
+    const matchingHandover = (handovers || []).find(
+      (handover) =>
+        handover.date === log.date &&
+        handover.shift === log.shift &&
+        handover.operator_id === log.operator_id
+    )
+
+    return {
+      ...log,
+      handover_notes: matchingHandover?.handover_notes || '',
+      problems_found: matchingHandover?.problems_found || '',
+    }
+  })
+
+  setDashboardLogs(combinedLogs)
+  setDashboardLoading(false)
+}
+
+async function loadPerformance() {
+  if (!profile || !user || (profile.role || '').toLowerCase() !== 'admin') return
+
+  const { data, error } = await supabase
+    .from('shift_logs')
+    .select(`
+      id,
+      date,
+      shift,
+      satellites_tracked,
+      operator_id,
+      profiles(full_name)
+    `)
+    .gte('date', performanceStartDate)
+    .lte('date', performanceEndDate)
+    .order('date', { ascending: true })
 
   if (error) {
     console.error(error)
@@ -250,15 +929,20 @@ async function loadPerformance() {
 
   setPerformanceLogs(data || [])
 }
-    setDashboardLogs(data || [])
-    setDashboardLoading(false)
-  }
 
-  useEffect(() => {
-    if (showDashboard && profile?.role === 'admin' && user) {
-      loadDashboard()
-    }
-  }, [showDashboard, dashboardDate, profile, user])
+async function runDashboard() {
+  if (!profile || !user || (profile.role || '').toLowerCase() !== 'admin') return
+
+  await loadDashboard()
+  await loadPerformance()
+}
+
+useEffect(() => {
+  if (showDashboard && (profile?.role || '').toLowerCase() === 'admin' && user) {
+    loadDashboard()
+    loadPerformance()
+  }
+}, [showDashboard, profile, user])
 
   function formatSubmittedTime(value) {
     if (!value) return '-'
@@ -296,6 +980,30 @@ async function loadPerformance() {
       log.date >= performanceStartDate &&
       log.date <= performanceEndDate
   )
+function getOperatorPerformanceChart(shiftName) {
+  const logs = performanceLogs
+    .filter((log) => log.shift === shiftName)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  const operators = [
+    ...new Set(
+      logs.map(
+        (log) =>
+          log.profiles?.full_name || 'Unknown Operator'
+      )
+    ),
+  ]
+
+  const dates = [
+    ...new Set(logs.map((log) => log.date)),
+  ].sort()
+
+  return {
+    logs,
+    operators,
+    dates,
+  }
+}
     function getOperatorPerformance() {
     const operators = {}
 
@@ -356,6 +1064,157 @@ function getStationPerformance() {
     percentage,
   }
 }
+  function isHandoverActive(handover) {
+    if (!handover) return false
+
+    const submittedAt = new Date(handover.created_at).getTime()
+    const eightHours = 8 * 60 * 60 * 1000
+    const eightHoursPassed =
+      Date.now() - submittedAt >= eightHours
+
+    if (!handover.acknowledged_at) {
+      return true
+    }
+
+    return !eightHoursPassed
+  }
+
+  function generateMonthlyReport() {
+    const logs = dashboardLogs.filter(
+      (log) =>
+        log.date >= performanceStartDate &&
+        log.date <= performanceEndDate
+    )
+
+    const totalSatellites = logs.reduce(
+      (sum, log) => sum + Number(log.satellites_tracked || 0),
+      0
+    )
+
+    const totalShifts = logs.length
+    const monthlyTarget = totalShifts * dailyTarget
+
+    const targetPercentage =
+      monthlyTarget > 0
+        ? Math.round((totalSatellites / monthlyTarget) * 100)
+        : 0
+
+    const shiftSummary = ['Morning', 'Day', 'Night'].map((shift) => {
+      const shiftLogs = logs.filter((log) => log.shift === shift)
+
+      const total = shiftLogs.reduce(
+        (sum, log) => sum + Number(log.satellites_tracked || 0),
+        0
+      )
+
+      const target = shiftLogs.length * dailyTarget
+
+      return {
+        shift,
+        shifts: shiftLogs.length,
+        total,
+        target,
+        percentage:
+          target > 0
+            ? Math.round((total / target) * 100)
+            : 0,
+      }
+    })
+
+    const operators = {}
+
+    logs.forEach((log) => {
+      const name = log.profiles?.full_name || 'Unknown Operator'
+
+      if (!operators[name]) {
+        operators[name] = {
+          name,
+          shifts: 0,
+          total: 0,
+        }
+      }
+
+      operators[name].shifts += 1
+      operators[name].total += Number(
+        log.satellites_tracked || 0
+      )
+    })
+
+    const operatorSummary = Object.values(operators)
+
+    const conditionSummary = {}
+
+    logs.forEach((log) => {
+      const condition = log.station_condition || 'Not recorded'
+
+      conditionSummary[condition] =
+        (conditionSummary[condition] || 0) + 1
+    })
+
+    const weatherSummary = {}
+
+    logs.forEach((log) => {
+      const weather = log.weather || 'Not recorded'
+
+      weatherSummary[weather] =
+        (weatherSummary[weather] || 0) + 1
+    })
+
+    const report = [
+      'SARAO SLR MONTHLY MANAGEMENT REPORT',
+      '===================================',
+      '',
+      `Reporting period: ${performanceStartDate} to ${performanceEndDate}`,
+      '',
+      '1. MONTHLY SUMMARY',
+      `Total shifts completed: ${totalShifts}`,
+      `Total satellites tracked: ${totalSatellites}`,
+      `Monthly target: ${monthlyTarget}`,
+      `Target achievement: ${targetPercentage}%`,
+      '',
+      '2. SHIFT PERFORMANCE',
+      ...shiftSummary.map(
+        (item) =>
+          `${item.shift}: ${item.shifts} shifts, ${item.total} satellites, target ${item.target}, achievement ${item.percentage}%`
+      ),
+      '',
+      '3. OPERATOR ACTIVITY',
+      ...(
+        operatorSummary.length > 0
+          ? operatorSummary.map(
+              (operator) =>
+                `${operator.name}: ${operator.shifts} shifts, ${operator.total} satellites, average ${(
+                  operator.total / operator.shifts
+                ).toFixed(1)} satellites per shift`
+            )
+          : ['No operator data recorded.']
+      ),
+      '',
+      '4. STATION CONDITION',
+      ...Object.entries(conditionSummary).map(
+        ([condition, count]) =>
+          `${condition}: ${count} shift(s)`
+      ),
+      '',
+      '5. WEATHER CONDITIONS',
+      ...Object.entries(weatherSummary).map(
+        ([weather, count]) =>
+          `${weather}: ${count} shift(s)`
+      ),
+      '',
+      '6. MANAGEMENT NOTES',
+      'This report is generated from the submitted SLR shift records for the selected reporting period.',
+      '',
+      `Report generated: ${new Date().toLocaleString('en-ZA', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: false,
+      })}`,
+    ].join('\\n')
+
+    return report
+  }
+
   async function deleteLog(id) {
     const confirmed = window.confirm(
       'Are you sure you want to delete this submitted shift?'
@@ -388,7 +1247,6 @@ function getStationPerformance() {
       satellites_tracked: log.satellites_tracked,
       station_condition: log.station_condition || 'Good',
       weather: log.weather || 'Clear',
-      notes: log.notes || '',
     })
 
     setEditMessage('')
@@ -445,7 +1303,6 @@ function getMonthlyTeamPerformance() {
         station_condition:
           editingLog.station_condition,
         weather: editingLog.weather,
-        notes: editingLog.notes,
       })
       .eq('id', editingLog.id)
 
@@ -560,7 +1417,7 @@ function getMonthlyTeamPerformance() {
           </div>
 
           <div style={styles.roleBadge}>
-            {profile?.role === 'admin'
+            {(profile?.role || '').toLowerCase() === 'admin'
               ? 'ADMIN — ALL OPERATORS'
               : 'OPERATOR'}
           </div>
@@ -574,10 +1431,12 @@ function getMonthlyTeamPerformance() {
         </div>
       </header>
 
+      <ActivationCountdown />
+
       <main style={styles.main}>
         {!showDashboard && (
           <>
-            {profile?.role === 'admin' && (
+            {(profile?.role || '').toLowerCase() === 'admin' && (
               <div style={styles.topButtons}>
                 <button
                   style={styles.dashboardButton}
@@ -590,7 +1449,15 @@ function getMonthlyTeamPerformance() {
               </div>
             )}
 
-            <section style={styles.card}>
+            <section
+              style={{
+                ...styles.card,
+                backgroundImage: "linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.82)), url('/images/moblas6-night.jpg')",
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+              }}
+            >
               <h2 style={styles.sectionTitle}>
                 Submit Shift Work
               </h2>
@@ -721,18 +1588,81 @@ function getMonthlyTeamPerformance() {
                     </select>
                   </div>
 
-                  <div>
-                    <label style={styles.label}>
-                      Notes
-                    </label>
+                  {handoverHistory.length > 0 && isHandoverActive(handoverHistory[0]) && (
+                    <div style={{
+                      marginBottom: '16px',
+                      padding: '16px',
+                      border: '2px solid #1f6feb',
+                      borderRadius: '8px',
+                      background: '#f5f9ff'
+                    }}>
+                      <h3 style={{ marginTop: 0 }}>
+                        Previous Shift Handover
+                      </h3>
 
+                      {handoverHistory.slice(0, 1).map((handover) => (
+                        <div key={handover.id}>
+                          <p><strong>Date:</strong> {handover.date}</p>
+                          <p><strong>Shift:</strong> {handover.shift}</p>
+                          <p>
+                            <strong>Operator:</strong>{' '}
+                            {handover.profiles?.full_name || 'Unknown Operator'}
+                          </p>
+                          <p>
+                            <strong>Problems Found:</strong>{' '}
+                            {handover.problems_found || 'None recorded'}
+                          </p>
+                          <p>
+                            <strong>Handover Notes:</strong>{' '}
+                            {handover.handover_notes || 'No notes recorded'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{
+                      marginBottom: '16px',
+                      padding: '14px',
+                      border: '1px solid #ccc',
+                      borderRadius: '8px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        cursor: 'pointer'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={handoverAcknowledged}
+                          onChange={async (e) => {
+                            if (e.target.checked && handoverHistory.length > 0) {
+                              await acknowledgeHandover(handoverHistory[0].id)
+                              setProblemsFound('')
+                              setHandoverNotes('')
+                            }
+                          }}
+                        />
+                        <span>I have read and understood the previous handover</span>
+                      </label>
+                    </div>
+
+                    <div>
+                    <label>Problems Found</label>
                     <textarea
-                      style={styles.textarea}
-                      value={notes}
-                      onChange={(e) =>
-                        setNotes(e.target.value)
-                      }
-                      placeholder="Enter notes..."
+                      value={problemsFound}
+                      onChange={(e) => setProblemsFound(e.target.value)}
+                      placeholder="Enter problems found..."
+                    />
+                  </div>
+
+                  <div>
+                    <label>Handover Notes</label>
+                    <textarea
+                      value={handoverNotes}
+                      onChange={(e) => setHandoverNotes(e.target.value)}
+                      placeholder="Enter handover notes..."
                     />
                   </div>
                 </div>
@@ -760,7 +1690,7 @@ function getMonthlyTeamPerformance() {
               )}
             </section>
 
-            {profile?.role !== 'admin' && (
+            {(profile?.role || '').toLowerCase() !== 'admin' && (
               <div style={styles.operatorMessage}>
                 Your shift has been submitted securely.
                 Submitted work is visible to Admin only.
@@ -770,8 +1700,11 @@ function getMonthlyTeamPerformance() {
         )}
 
         {showDashboard &&
-          profile?.role === 'admin' && (
-            <>
+          (profile?.role || '').toLowerCase() === 'admin' && (
+            <div data-dashboard-report="true">
+        {/* SLR FILES ADMIN PANEL */}
+        <SlrFilesPanel />
+
               <div style={styles.topButtons}>
                 <button
                   style={styles.backButton}
@@ -801,21 +1734,66 @@ function getMonthlyTeamPerformance() {
                   </p>
                 </div>
 
-                <div>
-                  <label style={styles.label}>
-                    Selected Date
-                  </label>
+                <div style={{
+                  display: 'flex',
+                  gap: '15px',
+                  alignItems: 'flex-end',
+                  flexWrap: 'wrap'
+                }}>
+                  <div>
+                    <label style={styles.label}>
+                      Start Date
+                    </label>
 
-                  <input
-                    style={styles.datePicker}
-                    type="date"
-                    value={dashboardDate}
-                    onChange={(e) =>
-                      setDashboardDate(
-                        e.target.value
-                      )
-                    }
-                  />
+                    <input
+                      style={styles.datePicker}
+                      type="date"
+                      value={performanceStartDate}
+                      onChange={(e) =>
+                        setPerformanceStartDate(e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label style={styles.label}>
+                      End Date
+                    </label>
+
+                    <input
+                      style={styles.datePicker}
+                      type="date"
+                      value={performanceEndDate}
+                      onChange={(e) =>
+                        setPerformanceEndDate(e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <button
+                    style={styles.refreshButton}
+                    onClick={runDashboard}
+                  >
+                    ▶ RUN DASHBOARD
+                  </button>
+
+                  <button
+                    type="button"
+                    style={styles.refreshButton}
+                    onClick={async (event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+
+                      await loadDashboard()
+                      setMonthlyReport(generateMonthlyReport())
+
+                      setTimeout(() => {
+                        downloadDashboardPDF()
+                      }, 500)
+                    }}
+                  >
+                    📄 GENERATE MONTHLY REPORT
+                  </button>
                 </div>
               </section>
 
@@ -867,7 +1845,8 @@ function getMonthlyTeamPerformance() {
                     </div>
                   </div>
 
-                  <section style={styles.card}>
+
+                   <section style={styles.card}>
                     <div style={styles.targetHeader}>
                       <div>
                         <h3 style={styles.cardTitle}>
@@ -974,42 +1953,6 @@ function getMonthlyTeamPerformance() {
   <h3 style={styles.cardTitle}>
     OPERATOR PERFORMANCE
   </h3>
-<div style={{
-  display: 'flex',
-  gap: '15px',
-  marginBottom: '20px',
-  flexWrap: 'wrap'
-}}>
-  <div>
-    <label style={styles.label}>
-      Start Date
-    </label>
-
-    <input
-      style={styles.datePicker}
-      type="date"
-      value={performanceStartDate}
-      onChange={(e) =>
-        setPerformanceStartDate(e.target.value)
-      }
-    />
-  </div>
-
-  <div>
-    <label style={styles.label}>
-      End Date
-    </label>
-
-    <input
-      style={styles.datePicker}
-      type="date"
-      value={performanceEndDate}
-      onChange={(e) =>
-        setPerformanceEndDate(e.target.value)
-      }
-    />
-  </div>
-</div>
   <div style={{ overflowX: 'auto' }}>
     <table style={styles.table}>
       <thead>
@@ -1063,7 +2006,32 @@ function getMonthlyTeamPerformance() {
       </tbody>
     </table>
   </div>
-</section><section style={styles.card}>
+</section>
+
+<section style={styles.card}>
+  <h3 style={styles.cardTitle}>
+    OPERATOR PERFORMANCE TRENDS
+  </h3>
+
+  <p
+    style={{
+      marginTop: 0,
+      color: '#6b7280',
+      fontSize: '14px',
+    }}
+  >
+    Performance comparison for the selected date range.
+    Target: 11 satellites per shift.
+  </p>
+
+  <OperatorPerformanceGraph shiftName="Morning" performanceLogs={performanceLogs} />
+
+  <OperatorPerformanceGraph shiftName="Day" performanceLogs={performanceLogs} />
+
+  <OperatorPerformanceGraph shiftName="Night" performanceLogs={performanceLogs} />
+</section>
+
+<section style={styles.card}>
   <h3 style={styles.cardTitle}>
     COMBINED STATION PERFORMANCE
   </h3>
@@ -1135,204 +2103,173 @@ function getMonthlyTeamPerformance() {
                         this date.
                       </div>
                     ) : (
-                      <div
-                        style={styles.tableWrapper}
-                      >
-                        <table style={styles.table}>
-                          <thead>
-                            <tr>
-                              <th style={styles.th}>
-                                Shift
-                              </th>
+                      <div>
+                        {dashboardLogs.map((log) => {
+                          const isExpanded =
+                            expandedShiftId === log.id
 
-                              <th style={styles.th}>
-                                Operator
-                              </th>
-
-                              <th style={styles.th}>
-                                Start
-                              </th>
-
-                              <th style={styles.th}>
-                                End
-                              </th>
-
-                              <th style={styles.th}>
-                                Satellites
-                              </th>
-
-                              <th style={styles.th}>
-                                Condition
-                              </th>
-
-                              <th style={styles.th}>
-                                Weather
-                              </th>
-
-                              <th style={styles.th}>
-                                Submitted
-                              </th>
-
-                              <th style={styles.th}>
-                                Notes
-                              </th>
-
-                              <th style={styles.th}>
-                                Actions
-                              </th>
-                            </tr>
-                          </thead>
-
-                          <tbody>
-                            {dashboardLogs.map(
-                              (log) => (
-                                <tr key={log.id}>
-                                  <td
-                                    style={styles.td}
-                                  >
-                                    <span
-                                      style={{
-                                        ...styles.shiftBadge,
-                                        background:
-                                          log.shift ===
-                                          'Morning'
-                                            ? '#16a34a'
-                                            : log.shift ===
-                                              'Day'
-                                            ? '#f97316'
-                                            : '#9333ea',
-                                      }}
-                                    >
-                                      {log.shift}
-                                    </span>
-                                  </td>
-
-                                  <td
-                                    style={styles.td}
-                                  >
-                                    <strong>
-                                      {log.profiles
-                                        ?.full_name ||
-                                        '-'}
-                                    </strong>
-                                  </td>
-
-                                  <td
+                          return (
+                            <div
+                              key={log.id}
+                              style={{
+                                border: '1px solid #d1d5db',
+                                borderRadius: '10px',
+                                marginBottom: '10px',
+                                overflow: 'hidden',
+                                background: '#ffffff',
+                              }}
+                            >
+                              <div
+                                onClick={() =>
+                                  setExpandedShiftId(
+                                    isExpanded ? null : log.id
+                                  )
+                                }
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: '15px',
+                                  padding: '14px 16px',
+                                  cursor: 'pointer',
+                                  background: '#f8fafc',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '15px',
+                                    flexWrap: 'wrap',
+                                  }}
+                                >
+                                  <span
                                     style={{
-                                      ...styles.td,
-                                      whiteSpace:
-                                        'nowrap',
+                                      ...styles.shiftBadge,
+                                      background:
+                                        log.shift === 'Morning'
+                                          ? '#16a34a'
+                                          : log.shift === 'Day'
+                                          ? '#f97316'
+                                          : '#9333ea',
                                     }}
                                   >
-                                    {log.start_time
-                                      ? log.start_time.substring(
-                                          0,
-                                          5
-                                        )
-                                      : '-'}
-                                  </td>
+                                    {log.shift}
+                                  </span>
 
-                                  <td
+                                  <strong>
+                                    {log.profiles?.full_name || '-'}
+                                  </strong>
+
+                                  <span>
+                                    🛰️ <strong>{log.satellites_tracked}</strong> satellites
+                                  </span>
+
+                                  <span>
+                                    {log.station_condition || '-'}
+                                  </span>
+                                </div>
+
+                                <strong>
+                                  {isExpanded
+                                    ? '▲ MINIMIZE'
+                                    : '▼ VIEW DETAILS'}
+                                </strong>
+                              </div>
+
+                              {isExpanded && (
+                                <div
+                                  style={{
+                                    padding: '16px',
+                                    borderTop: '1px solid #e5e7eb',
+                                  }}
+                                >
+                                  <div
                                     style={{
-                                      ...styles.td,
-                                      whiteSpace:
-                                        'nowrap',
+                                      display: 'grid',
+                                      gridTemplateColumns:
+                                        'repeat(auto-fit, minmax(180px, 1fr))',
+                                      gap: '12px',
                                     }}
                                   >
-                                    {log.end_time
-                                      ? log.end_time.substring(
-                                          0,
-                                          5
-                                        )
-                                      : '-'}
-                                  </td>
+                                    <div>
+                                      <strong>Start</strong>
+                                      <div>
+                                        {log.start_time
+                                          ? log.start_time.substring(0, 5)
+                                          : '-'}
+                                      </div>
+                                    </div>
 
-                                  <td
-                                    style={styles.td}
-                                  >
-                                    <strong>
-                                      {
-                                        log.satellites_tracked
-                                      }
-                                    </strong>
-                                  </td>
+                                    <div>
+                                      <strong>End</strong>
+                                      <div>
+                                        {log.end_time
+                                          ? log.end_time.substring(0, 5)
+                                          : '-'}
+                                      </div>
+                                    </div>
 
-                                  <td
-                                    style={styles.td}
-                                  >
-                                    {log.station_condition ||
-                                      '-'}
-                                  </td>
+                                    <div>
+                                      <strong>Weather</strong>
+                                      <div>{log.weather || '-'}</div>
+                                    </div>
 
-                                  <td
-                                    style={styles.td}
-                                  >
-                                    {log.weather || '-'}
-                                  </td>
+                              <div>
+  <strong>Submitted</strong>
+  <div>
+    {formatSubmittedTime(log.created_at)}
+  </div>
+</div>
 
-                                  <td
+<div>
+  <strong>Handover Notes</strong>
+  <div>
+    {log.handover_notes || 'No handover notes recorded'}
+  </div>
+</div>
+
+                                  </div>
+
+                                  <div
                                     style={{
-                                      ...styles.td,
-                                      whiteSpace:
-                                        'nowrap',
-                                    }}
-                                  >
-                                    {formatSubmittedTime(
-                                      log.created_at
-                                    )}
-                                  </td>
-
-                                  <td
-                                    style={{
-                                      ...styles.td,
-                                      minWidth: '180px',
-                                    }}
-                                  >
-                                    {log.notes || '-'}
-                                  </td>
-
-                                  <td
-                                    style={{
-                                      ...styles.td,
-                                      whiteSpace:
-                                        'nowrap',
+                                      marginTop: '15px',
+                                      display: 'flex',
+                                      gap: '10px',
                                     }}
                                   >
                                     <button
-                                      style={
-                                        styles.editButton
-                                      }
-                                      onClick={() =>
+                                      style={styles.editButton}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
                                         startEdit(log)
-                                      }
+                                      }}
                                     >
                                       Edit
                                     </button>
 
                                     <button
-                                      style={
-                                        styles.deleteButton
-                                      }
-                                      onClick={() =>
-                                        deleteLog(
-                                          log.id
-                                        )
-                                      }
+                                      style={styles.deleteButton}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        deleteLog(log.id)
+                                      }}
                                     >
                                       Delete
                                     </button>
-                                  </td>
-                                </tr>
-                              )
-                            )}
-                          </tbody>
-                        </table>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </section>
                 </>
               )}
-            </>
+            </div>
           )}
 
         {editingLog && (
@@ -1472,21 +2409,6 @@ function getMonthlyTeamPerformance() {
                 <option>Windy</option>
                 <option>Fog</option>
               </select>
-
-              <label style={styles.label}>
-                Notes
-              </label>
-
-              <textarea
-                style={styles.textarea}
-                value={editingLog.notes}
-                onChange={(e) =>
-                  setEditingLog({
-                    ...editingLog,
-                    notes: e.target.value,
-                  })
-                }
-              />
 
               {editMessage && (
                 <div style={styles.errorMessage}>
