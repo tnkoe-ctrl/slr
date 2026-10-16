@@ -109,7 +109,12 @@ export default function SlrFilesPanel() {
   const [lorMessage, setLorMessage] = useState('')
   const [lorFiles, setLorFiles] = useState([])
 
-  const [historyDate, setHistoryDate] = useState('2026-10-09')
+  const [historyDate, setHistoryDate] = useState(() => {
+    const now = new Date()
+    return new Date(
+      now.getTime() - now.getTimezoneOffset() * 60000
+    ).toISOString().slice(0, 10)
+  })
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState('')
   const [historyData, setHistoryData] = useState(null)
@@ -151,7 +156,7 @@ export default function SlrFilesPanel() {
   }, [refreshLorStatus])
 
 
-  async function loadHistory() {
+  const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
     setHistoryError('')
 
@@ -175,7 +180,11 @@ export default function SlrFilesPanel() {
     } finally {
       setHistoryLoading(false)
     }
-  }
+  }, [historyDate])
+
+  useEffect(() => {
+    if (historyDate) loadHistory()
+  }, [historyDate, loadHistory])
 
   const loadFiles = useCallback(async () => {
     setLoading(true)
@@ -374,10 +383,40 @@ export default function SlrFilesPanel() {
     }
   }
 
+  const selectedDateFiles = useMemo(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(historyDate)) return []
+
+    const selected = new Date(`${historyDate}T00:00:00Z`)
+    if (Number.isNaN(selected.getTime())) return []
+
+    const selectedYear = selected.getUTCFullYear()
+    const selectedDoy = Math.floor(
+      (selected.getTime() - Date.UTC(selectedYear, 0, 1)) / 86400000
+    ) + 1
+
+    return files.filter((file) => {
+      const fileDoy = Number(file.doy)
+      const dateSources = [
+        file.observation_date,
+        file.processed_at,
+        file.created_at
+      ]
+
+      const yearDate = dateSources
+        .map((value) => String(value || '').slice(0, 10))
+        .find((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
+
+      if (!yearDate || !Number.isInteger(fileDoy)) return false
+
+      const fileYear = Number(yearDate.slice(0, 4))
+      return fileYear === selectedYear && fileDoy === selectedDoy
+    })
+  }, [files, historyDate])
+
   const filteredFiles = useMemo(() => {
     const query = search.trim().toLowerCase()
 
-    return files.filter((file) => {
+    return selectedDateFiles.filter((file) => {
       const matchesType =
         typeFilter === 'all' || file.file_type === typeFilter
 
@@ -403,11 +442,11 @@ export default function SlrFilesPanel() {
 
       return matchesType && matchesStatus && matchesSearch
     })
-  }, [files, search, typeFilter, statusFilter])
+  }, [selectedDateFiles, search, typeFilter, statusFilter])
 
   const counts = useMemo(() => {
     const result = {
-      total: files.length,
+      total: selectedDateFiles.length,
       sm: 0,
       lor: 0,
       html: 0,
@@ -419,7 +458,7 @@ export default function SlrFilesPanel() {
       failed: 0
     }
 
-    files.forEach((file) => {
+    selectedDateFiles.forEach((file) => {
       if (result[file.file_type] !== undefined) {
         result[file.file_type] += 1
       }
@@ -430,7 +469,17 @@ export default function SlrFilesPanel() {
     })
 
     return result
-  }, [files])
+  }, [selectedDateFiles])
+
+  function openLocalLor(file, action) {
+    const params = new URLSearchParams({
+      name: file.name,
+      folder: file.folder || 'output',
+      action
+    })
+    const url = `http://127.0.0.1:8766/file?${params.toString()}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   async function downloadFile(file) {
     setDownloading(file.id)
@@ -448,7 +497,7 @@ export default function SlrFilesPanel() {
         const { data, error: signedError } =
           await supabase.storage
             .from('slr-files')
-            .createSignedUrl(path, 300)
+            .createSignedUrl(path, 300, { download: file.filename })
 
         if (!signedError && data?.signedUrl) {
           window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
@@ -558,7 +607,21 @@ export default function SlrFilesPanel() {
         {lorFiles.length > 0 && (
           <ul>
             {lorFiles.map(file => (
-              <li key={file.name}>{file.name} ({file.size} bytes)</li>
+              <li key={`${file.folder}-${file.name}`} style={{
+                marginBottom: '8px',
+                overflowWrap: 'anywhere'
+              }}>
+                <strong>{file.name}</strong> ({file.size} bytes; {file.folder})
+                {' '}
+                <button type="button" onClick={() => openLocalLor(file, 'view')}
+                  style={{ marginLeft: '8px', padding: '5px 9px', cursor: 'pointer' }}>
+                  View
+                </button>
+                <button type="button" onClick={() => openLocalLor(file, 'download')}
+                  style={{ marginLeft: '6px', padding: '5px 9px', cursor: 'pointer' }}>
+                  Download
+                </button>
+              </li>
             ))}
           </ul>
         )}
@@ -781,6 +844,18 @@ export default function SlrFilesPanel() {
 
         {historyData && (
           <>
+            {(!historyData.source_files || historyData.source_files.length === 0) &&
+             (!historyData.activity || historyData.activity.length === 0) && (
+              <p style={{
+                padding: '12px',
+                borderRadius: '8px',
+                background: '#f3f4f6',
+                color: '#374151'
+              }}>
+                No history found for this date.
+              </p>
+            )}
+
             <h4>Local .lor files saved on {historyData.date}</h4>
             <p style={{ color: '#6b7280', fontSize: '13px' }}>
               Files are listed by their local saved time. The date encoded
@@ -801,6 +876,7 @@ export default function SlrFilesPanel() {
                       <th style={{ padding: '9px' }}>Filename</th>
                       <th style={{ padding: '9px' }}>Saved locally</th>
                       <th style={{ padding: '9px' }}>Size</th>
+                      <th style={{ padding: '9px' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -821,6 +897,85 @@ export default function SlrFilesPanel() {
                           borderBottom: '1px solid #e5e7eb',
                           whiteSpace: 'nowrap'
                         }}>{formatBytes(file.size)}</td>
+                        <td style={{
+                          padding: '9px',
+                          borderBottom: '1px solid #e5e7eb',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          <button type="button" onClick={() => openLocalLor(file, 'view')}
+                            style={{ padding: '6px 9px', cursor: 'pointer' }}>View</button>
+                          <button type="button" onClick={() => openLocalLor(file, 'download')}
+                            style={{ padding: '6px 9px', marginLeft: '6px', cursor: 'pointer' }}>Download</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <h4>Processor and target-test files for {historyData.date}</h4>
+            <p style={{ color: '#6b7280', fontSize: '13px' }}>
+              Non-empty files matched by the observation date in their filename.
+              Duplicate incoming/archive SM files are listed once.
+            </p>
+
+            {!historyData.processor_files ||
+             historyData.processor_files.length === 0 ? (
+              <p>No processor or target-test files were found for this observation date.</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  marginBottom: '18px'
+                }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', background: '#e5e7eb' }}>
+                      <th style={{ padding: '9px' }}>Filename</th>
+                      <th style={{ padding: '9px' }}>Type</th>
+                      <th style={{ padding: '9px' }}>Folder</th>
+                      <th style={{ padding: '9px' }}>Size</th>
+                      <th style={{ padding: '9px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData.processor_files.map((file) => (
+                      <tr key={`${file.folder}-${file.name}`}>
+                        <td style={{
+                          padding: '9px',
+                          borderBottom: '1px solid #e5e7eb',
+                          overflowWrap: 'anywhere'
+                        }}>{file.name}</td>
+                        <td style={{
+                          padding: '9px',
+                          borderBottom: '1px solid #e5e7eb'
+                        }}>{file.kind}</td>
+                        <td style={{
+                          padding: '9px',
+                          borderBottom: '1px solid #e5e7eb'
+                        }}>{file.folder}</td>
+                        <td style={{
+                          padding: '9px',
+                          borderBottom: '1px solid #e5e7eb',
+                          whiteSpace: 'nowrap'
+                        }}>{formatBytes(file.size)}</td>
+                        <td style={{
+                          padding: '9px',
+                          borderBottom: '1px solid #e5e7eb',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => openLocalLor(file, 'view')}
+                            style={{ padding: '6px 9px', cursor: 'pointer' }}
+                          >View</button>
+                          <button
+                            type="button"
+                            onClick={() => openLocalLor(file, 'download')}
+                            style={{ padding: '6px 9px', marginLeft: '6px', cursor: 'pointer' }}
+                          >Download</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1121,7 +1276,7 @@ export default function SlrFilesPanel() {
           color: '#6b7280'
         }}
       >
-        Showing {filteredFiles.length} of {files.length} recorded files.
+        Showing {filteredFiles.length} of {selectedDateFiles.length} recorded files for {historyDate || "the selected date"}.
       </div>
         </div>
       )}
